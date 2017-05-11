@@ -179,10 +179,10 @@ class MLPrec(object):
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
         reg_losses_i = tf.get_collection(loss_name)
-        self.reg_losses = list(reg_losses_i)
+        self.reg_losses.extend(reg_losses_i)
         self.rec_loss_i = mse_by_part(self.I_rec, self.i_x, self.Rshape[0], self.alpha)
         tf.add_to_collection(loss_name, self.rec_loss_i)
-        self.i_loss = tf.add_n(tf.get_collection(loss_name))  # U网络重建误差
+        self.i_loss = tf.add_n(tf.get_collection(loss_name))  # I网络重建误差
         # ---------------------------------------------------------------------------------
         # ------------------------- 总loss ------------------------------------------------
         self.sparse_loss = self.sparse_lambda * (sparse_loss(self.rho, self.V)+sparse_loss(self.rho, self.U))
