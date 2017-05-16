@@ -1,28 +1,28 @@
 # -*- coding: utf8 -*-
-import tensorflow as tf
+
 import sys
 import ast
 import os
 
 from MLPrec import *
-from dataUtils import getData,read_data_batch
+from dataUtils import data_generator,getData
 
 ## 都改成flag吧！
 flags = tf.app.flags
 # flags.DEFINE_string('data_dir', './data/', 'Directory for storing data')
 # FLAGS = flags.FLAGS
 mlp_args = {
-        "noise"     : .1,
-        "n_nodes"   : (200, 100, 50),
-        "learning_rate": .001,
-        "n_epoch"  : 400,
+        "noise"     : 0.0,
+        "n_nodes"   : (400, 200, 100, 64),
+        "learning_rate": .0001,
+        "n_epoch"  : 300,
         "data_dir": 'data/ml-100k/',
-        "batch_size": 300,
+        "batch_size": 50,
         "rho"       :0.05,
-        "reg_lambda":0.1,
+        "reg_lambda":0.01,
         "sparse_lambda":0,
-        "alpha"     :0.8,
-        "beta"      :1,
+        "alpha"     :0.2,
+        "beta"      :0.8,
         "delta"     :1,
         "save_freq":1
 }
@@ -35,13 +35,13 @@ def main():
         k, v = arg.split('=', 1)
         mlp_args[k] = ast.literal_eval(v)
 
-    print("Stacked MLP_rec arguments: ")
+    print("MLP_rec arguments: ")
     for k in sorted(mlp_args.keys()):
         print("\t{:15}: {}".format(k, mlp_args[k]))
 
     if not os.path.isdir(mlp_args["data_dir"]):
         os.makedirs(mlp_args["data_dir"])
-    fileR = mlp_args["data_dir"]+'R.npy'
+    fileR = mlp_args["data_dir"] + 'R.npy'
     fileU = mlp_args["data_dir"] + 'User.npy'
     fileI = mlp_args["data_dir"] + 'Item.npy'
     R,U,I = getData(fileR,fileItem=fileI,fileUser=fileU)
@@ -53,7 +53,7 @@ def main():
         print("build model...")
         model.build()
         print("training...")
-        model.train(load_data_func=read_data_batch)
+        model.train(load_data_func=data_generator)
 
 
 if __name__ == '__main__':

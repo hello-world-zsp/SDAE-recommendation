@@ -5,11 +5,12 @@ from dataUtils import save_batch_data
 import time
 import numpy as np
 import os
+import tensorflow as tf
 
 
 class MLPrec(object):
     def __init__(self, sess, Rshape, Ushape, Ishape, n_nodes=(20,20,20), learning_rate=0.01,
-                 n_epoch=100, is_training=True, batch_size=20,decay=0.95, save_freq=1,
+                 n_epoch=100, is_training=True, batch_size=20, decay=0.95, save_freq=1,
                  reg_lambda=0.0, rho=0.05, sparse_lambda=0.0, alpha=1,beta=1,delta=1, noise=0,
                  data_dir = None):
 
@@ -18,7 +19,6 @@ class MLPrec(object):
         self.units = n_nodes              # 隐层节点数
         self.n_layers = len(n_nodes)
         self.n_epoch = n_epoch
-        self.n_batch = Rshape[0]*Rshape[1]//(batch_size**2)
         self.batch_size = batch_size
         self.Rshape = Rshape
         self.Usize = Ushape[1]
@@ -76,7 +76,8 @@ class MLPrec(object):
                                 regularizer=self.regularizer(layerlambda))
             seb = tf.summary.histogram(name+'/enc_biases',eb)
             fc1 = tf.add(tf.matmul(corrupt, ew), eb)
-            act = tf.nn.sigmoid(tf.layers.batch_normalization(fc1))
+            # act = tf.nn.sigmoid(tf.layers.batch_normalization(fc1))
+            act = tf.nn.relu(tf.layers.batch_normalization(fc1))
             self.ew = ew
             self.eb = eb
             self.summ_handle.add_summ(e_w=sew, e_b=seb)
@@ -99,9 +100,10 @@ class MLPrec(object):
             self.db = db
             self.summ_handle.add_summ(d_w=sdw, d_b=sdb)
             fc = tf.add(tf.matmul(input, dw), db)
-            out = tf.sigmoid(fc)
+            # out = tf.sigmoid(tf.layers.batch_normalization(fc))
+            out = tf.nn.relu(tf.layers.batch_normalization(fc))
 
-        return out
+        return out,fc
 
     def build(self):
         self.lr = tf.placeholder(tf.float32, name='learning_rate')
@@ -131,11 +133,11 @@ class MLPrec(object):
         dec_nodes.append(input_size)
         for i in range(self.n_layers):
             layer_name = "U_decoder_layer" + str(i)
-            out = self.decoder(input_data,dec_nodes[i],self.lambda_u,layer_name)
+            out,fc = self.decoder(input_data,dec_nodes[i],self.lambda_u,layer_name)
             self.U_dec_layers.append(out)
             reg_losses = tf.losses.get_regularization_losses(layer_name)
             input_data = tf.concat([out,self.u_x],axis=1)
-        self.U_rec = out
+        self.U_rec = fc
         for loss in reg_losses:
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
@@ -170,11 +172,11 @@ class MLPrec(object):
         dec_nodes.append(input_size)
         for i in range(self.n_layers):
             layer_name = "I_decoder_layer" + str(i)
-            out = self.decoder(input_data, dec_nodes[i], self.lambda_i, layer_name)
+            out,fc = self.decoder(input_data, dec_nodes[i], self.lambda_i, layer_name)
             self.I_dec_layers.append(out)
             reg_losses = tf.losses.get_regularization_losses(layer_name)
             input_data = tf.concat([out, self.i_x], axis=1)
-        self.I_rec = out
+        self.I_rec = fc
         for loss in reg_losses:
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
@@ -189,7 +191,7 @@ class MLPrec(object):
         tf.add_to_collection(loss_name, self.sparse_loss)
         self.R_hat = tf.matmul(self.U, tf.transpose(self.V))
         self.rec_loss = mse_mask(self.R,self.R_hat)
-        reg_loss_u_and_i = tf.reduce_sum(tf.norm(self.U,axis=1))+tf.reduce_sum(tf.norm(self.V,axis=1))
+        reg_loss_u_and_i = tf.reduce_mean(tf.norm(self.U,axis=1))+tf.reduce_mean(tf.norm(self.V,axis=1))
         self.reg_losses.append(reg_loss_u_and_i)
         self.loss = self.rec_loss + self.reg_lambda * reg_loss_u_and_i+\
                     self.beta * self.u_loss + self.delta * self.i_loss
@@ -211,17 +213,17 @@ class MLPrec(object):
         for epoch in range(self.n_epoch):
             if epoch > self.change_lr_epoch:
                 current_lr = current_lr * self.lr_decay
-            for batch in range(self.n_batch):
+            n_batch = self.Rshape[0]//self.batch_size
+            for batch in range(n_batch):
                 counter += 1
-                # 每个batch读一次数据
-                batch_u, batch_i, batch_R = load_data_func(self.data_dir,
-                                        batch_size=self.batch_size)
+                # 每个batch读一次数据 load_data_func是一个generator,使用next获得它返回的值
+                batch_u, batch_i, batch_R = next(load_data_func(self.data_dir,n_batch,batch_size=self.batch_size))
 
-                _, loss, rec_loss, reg_loss,loss_u,loss_i, U, V, summ_loss =\
-                    self.sess.run([self.optimizer,self.loss,self.rmse, self.reg_losses,self.rec_loss_u,self.rec_loss_i,
+                _, loss, rmse, rec_loss, reg_loss,loss_u,loss_i, U, V, summ_loss =\
+                    self.sess.run([self.optimizer,self.loss,self.rmse, self.rec_loss,self.reg_losses,self.rec_loss_u,self.rec_loss_i,
                                 self.U, self.V, self.summ_handle.summ_loss],
                                   feed_dict={self.u_x: batch_u,self.i_x:batch_i, self.R:batch_R,self.lr:current_lr})
-                self.writer.add_summary(summ_loss,epoch * self.n_batch + batch)
+                self.writer.add_summary(summ_loss,epoch * n_batch + batch)
                 if counter%50==0:
                 # 记录w,b
                     summ_ew, summ_dw, summ_eb, summ_db = self.sess.run([self.summ_handle.summ_enc_w, self.summ_handle.summ_enc_b,
@@ -229,11 +231,11 @@ class MLPrec(object):
                                                               feed_dict={self.u_x: batch_u, self.i_x: batch_i,
                                                                          self.R: batch_R, self.lr: current_lr})
                     for i in range(self.n_layers):
-                        self.writer.add_summary(summ_ew[i], epoch * self.n_batch + batch)
-                        self.writer.add_summary(summ_dw[i], epoch * self.n_batch + batch)
-                        self.writer.add_summary(summ_eb[i], epoch * self.n_batch + batch)
-                        self.writer.add_summary(summ_db[i], epoch * self.n_batch + batch)
-            print("epoch ",epoch," train loss: ", loss," rec loss(rmse): ", rec_loss," reg loss: ",reg_loss,
+                        self.writer.add_summary(summ_ew[i], epoch * n_batch + batch)
+                        self.writer.add_summary(summ_dw[i], epoch * n_batch + batch)
+                        self.writer.add_summary(summ_eb[i], epoch * n_batch + batch)
+                        self.writer.add_summary(summ_db[i], epoch * n_batch + batch)
+            print("epoch ",epoch," train loss: ", loss,"rmse: ",rmse," rec loss: ", rec_loss," reg loss: ",reg_loss,
                   " loss u: ",loss_u," loss i: ",loss_i,
                   " sparse coef: ",tf.reduce_mean(tf.reduce_mean(U)).eval()+tf.reduce_mean(tf.reduce_mean(V)).eval(),
                  " time:",str(time.time()-begin_time))

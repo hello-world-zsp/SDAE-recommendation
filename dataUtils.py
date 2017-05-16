@@ -94,7 +94,6 @@ def read_data_batch(path,batch_size=None):
     U = np.load("./" + path+'User.npy')
     I = np.load("./" + path+'Item.npy')
     R = np.load("./" + path+'R.npy')
-    # X = X/255             #X的归一化
     ru = np.random.permutation(U.shape[0])      # shuffle
     U = U[ru,:]
     batch_U = U[:batch_size]
@@ -109,6 +108,26 @@ def read_data_batch(path,batch_size=None):
 
     return batch_U,batch_I,batch_R
 
+
+def data_generator(path,nb_batch,batch_size=None):
+    U = np.load("./" + path+'User.npy',mmap_mode='r')
+    I = np.load("./" + path+'Item.npy',mmap_mode='r')
+    R = np.load("./" + path+'R.npy',mmap_mode='r')
+    ru = np.random.permutation(U.shape[0])      # 只在第一次读的时候做shuffle
+    U = U[ru,:]
+    ri = np.random.permutation(I.shape[0])
+    I = I[ri,:]
+    batch = 0
+    while batch <= nb_batch:
+        batch_U = U[:batch_size]
+        batch_I = I[:batch_size]
+        batch_R_u = R[ru,:][:batch_size]            # 所选用户对应的评分项
+        batch_R_i = R[:,ri][:,:batch_size]
+        batch_R = batch_R_u[:,ri][:,:batch_size]
+        batch_U = np.concatenate((batch_R_u,batch_U),axis=1)
+        batch_I = np.concatenate((batch_R_i.T,batch_I),axis=1)          # 转置，不知道方向有没有问题
+        batch += 1
+        yield batch_U,batch_I,batch_R
 
 def save_batch_data(save_path, inputU=[], inputV=[], is_New=False):
     save_name = os.path.join(sys.path[0], save_path)
