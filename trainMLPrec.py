@@ -15,9 +15,9 @@ mlp_args = {
         "noise"     : 0.0,
         "n_nodes"   : (400, 200, 100, 64),
         "learning_rate": .0001,
-        "n_epoch"  : 300,
+        "n_epoch"  : 200,
         "data_dir": 'data/ml-100k/',
-        "batch_size": 50,
+        "batch_size": 100,
         "rho"       :0.05,
         "reg_lambda":0.01,
         "sparse_lambda":0,
@@ -45,6 +45,7 @@ def main():
     fileU = mlp_args["data_dir"] + 'User.npy'
     fileI = mlp_args["data_dir"] + 'Item.npy'
     R,U,I = getData(fileR,fileItem=fileI,fileUser=fileU)
+    num_vals = 5        # 交叉验证5次
     # ----------------------------------------------------
     # ----------------- 模型初始化 ------------------------
     with tf.Session() as sess:
@@ -53,8 +54,10 @@ def main():
         print("build model...")
         model.build()
         print("training...")
-        model.train(load_data_func=data_generator)
-
+        val_rmse = 0
+        for i in range(1,num_vals+1):
+            val_rmse += model.train(i,load_data_func=data_generator)
+        print (val_rmse/num_vals)
 
 if __name__ == '__main__':
     main()

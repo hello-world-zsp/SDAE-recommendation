@@ -109,10 +109,10 @@ def read_data_batch(path,batch_size=None):
     return batch_U,batch_I,batch_R
 
 
-def data_generator(path,nb_batch,batch_size=None):
-    U = np.load("./" + path+'User.npy',mmap_mode='r')
-    I = np.load("./" + path+'Item.npy',mmap_mode='r')
-    R = np.load("./" + path+'R.npy',mmap_mode='r')
+def data_generator(Rfilename,path,nb_batch,batch_size=None):
+    U = np.load('./' + path + '/User.npy',mmap_mode='r')
+    I = np.load("./" + path + 'Item.npy',mmap_mode='r')
+    R = np.load(Rfilename,mmap_mode='r')
     ru = np.random.permutation(U.shape[0])      # 只在第一次读的时候做shuffle
     U = U[ru,:]
     ri = np.random.permutation(I.shape[0])
@@ -147,11 +147,14 @@ def save_batch_data(save_path, inputU=[], inputV=[], is_New=False):
 
 path = './data/ml-100k/'
 nu,ni,occup_list = getInfo(path+'u.info',path+'u.occupation')
-R = readR(path+'u.data',(nu,ni))
-np.save(path+'R',R)
-Item = readItem(path+"u.item",ni)
-np.save(path+'Item',Item)
-User = readUser(path+'u.user',nu,occup_list )
-np.save(path+'User',User)
-getData(path+'R.npy',path+'Item.npy',path+'User.npy')
+for i in range(1,6):
+    R = readR(path+'u'+str(i)+'.base',(nu,ni))
+    np.save(path+'R'+str(i)+'_train',R)
+    R = readR(path+'u'+str(i)+'.test',(nu,ni))
+    np.save(path+'R'+str(i)+'_val',R)
+# Item = readItem(path+"u.item",ni)
+# np.save(path+'Item',Item)
+# User = readUser(path+'u.user',nu,occup_list )
+# np.save(path+'User',User)
+# getData(path+'R.npy',path+'Item.npy',path+'User.npy')
 

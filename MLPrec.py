@@ -200,7 +200,8 @@ class MLPrec(object):
         self.rmse = rmse_mask(self.R,self.R_hat)
         # ----------------------------------------------------------------------------------
 
-    def train(self, load_data_func):
+    def train(self, val_iter, load_data_func):
+        # val_iter是进行第几次交叉验证
         tf.global_variables_initializer().run()
         self.writer = tf.summary.FileWriter('./'+self.log_dir, self.sess.graph)
         self.optimizer = tf.train.AdamOptimizer(self.lr, beta1=0.9).minimize(self.loss)
@@ -217,7 +218,8 @@ class MLPrec(object):
             for batch in range(n_batch):
                 counter += 1
                 # 每个batch读一次数据 load_data_func是一个generator,使用next获得它返回的值
-                batch_u, batch_i, batch_R = next(load_data_func(self.data_dir,n_batch,batch_size=self.batch_size))
+                Rfilename = "./" + self.data_dir + 'R'+str(val_iter)+'_train.npy'
+                batch_u, batch_i, batch_R = next(load_data_func(Rfilename,self.data_dir,n_batch,batch_size=self.batch_size))
 
                 _, loss, rmse, rec_loss, reg_loss,loss_u,loss_i, U, V, summ_loss =\
                     self.sess.run([self.optimizer,self.loss,self.rmse, self.rec_loss,self.reg_losses,self.rec_loss_u,self.rec_loss_i,
@@ -239,6 +241,19 @@ class MLPrec(object):
                   " loss u: ",loss_u," loss i: ",loss_i,
                   " sparse coef: ",tf.reduce_mean(tf.reduce_mean(U)).eval()+tf.reduce_mean(tf.reduce_mean(V)).eval(),
                  " time:",str(time.time()-begin_time))
+
+        # ----------------------------------- validation -----------------------------------------------
+        mean_rmse = 0
+        for batch in range(n_batch):
+            Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_val.npy'
+            batch_u, batch_i, batch_R = next(load_data_func(Rfilename, self.data_dir, n_batch, batch_size=self.batch_size))
+            loss, rmse = \
+                self.sess.run([self.loss, self.rmse],
+                              feed_dict={self.u_x: batch_u, self.i_x: batch_i, self.R: batch_R, self.lr: current_lr})
+            mean_rmse += rmse
+        mean_rmse /= n_batch
+        print(" train loss: ", loss, "rmse: ", mean_rmse)
+        return rmse
 
 
 
