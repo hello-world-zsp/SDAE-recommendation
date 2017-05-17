@@ -21,4 +21,4 @@ SDAE-recommendation system
 - 总loss: mse(R-UV), UsersNet重建误差，ItemsNet重建误差，正则项，||U||,||V||的加权和
     - mse是矩阵各元素误差平方的均值，只针对R有评分的项计算。（mask是sign(abs(x))取到的）
     - __||U||的定义文献没有明说，我是取得U各行（代表各用户）norm的均值。__
-- __训练时候，每个batch读batch_size个用户和他们对应的batch_size个评分，用全部的side information和部分的R去训练网络。刚才一讨论感觉这样不太对。__
+- __训练时候，每个batch读batch_size个用户和他们对应的batch_size个评分，用部分的side information和R去训练网络。刚才一讨论感觉这样不太对。__
