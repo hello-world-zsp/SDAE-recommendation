@@ -33,7 +33,7 @@ def mse_mask(x,y):
     # x=0的地方，不计算mse,用的sign,>0的地方置1，=0的地方置0
     mask = tf.sign(tf.abs(x))
     # return tf.reduce_mean(tf.reduce_sum(mask * tf.pow(tf.subtract(x,y),2.0)))
-    return tf.reduce_mean(tf.reduce_mean(mask * tf.pow(tf.subtract(x, y), 2.0)))
+    return tf.reduce_mean(tf.reduce_sum(mask * tf.pow(tf.subtract(x, y), 2.0),axis=1))
 
 def rmse_mask(x,y):
     # x=0的地方，不计算mse,用的sign,>0的地方置1，=0的地方置0
