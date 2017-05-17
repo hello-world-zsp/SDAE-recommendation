@@ -6,6 +6,7 @@ import time
 import numpy as np
 import os
 import tensorflow as tf
+from inspect import isgeneratorfunction
 
 
 class MLPrec(object):
@@ -139,7 +140,7 @@ class MLPrec(object):
             self.U_dec_layers.append(out)
             reg_losses = tf.losses.get_regularization_losses(layer_name)
             input_data = tf.concat([out,self.u_x],axis=1)
-        self.U_rec = out
+        self.U_rec = fc
         for loss in reg_losses:
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
@@ -178,7 +179,7 @@ class MLPrec(object):
             self.I_dec_layers.append(out)
             reg_losses = tf.losses.get_regularization_losses(layer_name)
             input_data = tf.concat([out, self.i_x], axis=1)
-        self.I_rec = out
+        self.I_rec = fc
         for loss in reg_losses:
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
@@ -191,7 +192,7 @@ class MLPrec(object):
         # ------------------------- 总loss ------------------------------------------------
         self.sparse_loss = self.sparse_lambda * (sparse_loss(self.rho, self.V)+sparse_loss(self.rho, self.U))
         tf.add_to_collection(loss_name, self.sparse_loss)
-        self.R_hat = tf.matmul(self.U, tf.transpose(self.V))*5.0
+        self.R_hat = tf.matmul(self.U, tf.transpose(self.V))
         self.rec_loss = mse_mask(self.R,self.R_hat)
         reg_loss_u_and_i = tf.reduce_mean(tf.norm(self.U,axis=1))+tf.reduce_mean(tf.norm(self.V,axis=1))
         self.reg_losses.append(reg_loss_u_and_i)
@@ -200,6 +201,7 @@ class MLPrec(object):
         self.summ_handle.summ_loss = tf.summary.scalar('total loss',self.loss)
         # 输出预测准确度，和文献比一下
         self.rmse = rmse_mask(self.R,self.R_hat)
+        self.summ_handle.summ_metric = tf.summary.scalar('rmse', self.rmse)
         # ----------------------------------------------------------------------------------
 
     def train(self, val_iter, load_data_func):
@@ -217,18 +219,22 @@ class MLPrec(object):
         for epoch in range(self.n_epoch):
             if epoch > self.change_lr_epoch:
                 current_lr = current_lr * self.lr_decay
-            n_batch = self.Rshape[0]//self.batch_size
+            if self.batch_size is  None:
+                n_batch = 1
+            else:
+                n_batch = self.Rshape[0]//self.batch_size
+            Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_train.npy'
+            data_generator = load_data_func(Rfilename, self.data_dir, n_batch, batch_size=self.batch_size, shuffle=True)
             for batch in range(n_batch):
                 counter += 1
                 # 每个batch读一次数据 load_data_func是一个generator,使用next获得它返回的值
-                Rfilename = "./" + self.data_dir + 'R'+str(val_iter)+'_train.npy'
-                batch_u, batch_i, batch_R = next(load_data_func(Rfilename,self.data_dir,n_batch,batch_size=self.batch_size))
-
-                _, loss, rmse, rec_loss, reg_loss,loss_u,loss_i, U, V, summ_loss =\
+                batch_u, batch_i, batch_R = data_generator.next()
+                _, loss, rmse, rec_loss, reg_loss,loss_u,loss_i, U, V, summ_loss,summ_rmse =\
                     self.sess.run([self.optimizer,self.loss,self.rmse, self.rec_loss,self.reg_losses,self.rec_loss_u,self.rec_loss_i,
-                                self.U, self.V, self.summ_handle.summ_loss],
+                                self.U, self.V, self.summ_handle.summ_loss,self.summ_handle.summ_metric],
                                   feed_dict={self.u_x: batch_u,self.i_x:batch_i, self.R:batch_R,self.lr:current_lr})
                 self.writer.add_summary(summ_loss,epoch * n_batch + batch)
+                self.writer.add_summary(summ_rmse, epoch * n_batch + batch)
                 if counter%50==0:
                 # 记录w,b
                     summ_ew, summ_dw, summ_eb, summ_db = self.sess.run([self.summ_handle.summ_enc_w, self.summ_handle.summ_enc_b,
