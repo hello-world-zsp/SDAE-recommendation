@@ -2,9 +2,11 @@
 import numpy as np
 import os,sys
 import math
+from sklearn import preprocessing
 
 
 def getInfo(fileInfo,fileOccup):
+    # 获取用户数、电影数、职业列表
     f = open(fileInfo)
     line = f.readline()
     content = line.split(' ')
@@ -33,6 +35,7 @@ def readR(filename,Rshape):
             line = f.readline()
         except:
             break
+    # Mrate = Mrate/5.0           # 评分归一化
     return Mrate
 
 
@@ -54,7 +57,7 @@ def readItem(filename,ni):
             print (L[0])
         Mitem[L[0]-1] = np.array(L)
         line = f.readline()
-
+    Mitem = Mitem[:,1:]           # 不用id
     return Mitem
 
 
@@ -70,6 +73,7 @@ def getData(fileR, fileItem, fileUser):
 
 
 def readUser(filename,nu,occup_list ):
+    # 获取用户矩阵，各列id,age,gender,occupation，age和occupation是one-hot的
     no = len(occup_list)
     Muser = np.zeros((nu,(3+no)))   # nu行，id,age,gender,occupation列
     f = open(filename)
@@ -88,6 +92,8 @@ def readUser(filename,nu,occup_list ):
         L = [int(s) for s in L]
         Muser[L[0] - 1] = np.array(L)
         line = f.readline()
+    Muser = Muser[:,1:]             # 去掉id列
+    Muser[:, 0] = preprocessing.maxabs_scale( Muser[:,0])   # age归一化
     return Muser
 
 def read_data_batch(path,batch_size=None):

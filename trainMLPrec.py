@@ -13,11 +13,11 @@ flags = tf.app.flags
 # FLAGS = flags.FLAGS
 mlp_args = {
         "noise"     : 0.0,
-        "n_nodes"   : (400, 200, 100, 64),
+        "n_nodes"   : (512,256,128,64),
         "learning_rate": .0001,
         "n_epoch"  : 200,
         "data_dir": 'data/ml-100k/',
-        "batch_size": 100,
+        "batch_size": 50,
         "rho"       :0.05,
         "reg_lambda":0.01,
         "sparse_lambda":0,

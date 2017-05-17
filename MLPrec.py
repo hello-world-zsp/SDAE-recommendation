@@ -76,8 +76,9 @@ class MLPrec(object):
                                 regularizer=self.regularizer(layerlambda))
             seb = tf.summary.histogram(name+'/enc_biases',eb)
             fc1 = tf.add(tf.matmul(corrupt, ew), eb)
-            # act = tf.nn.sigmoid(tf.layers.batch_normalization(fc1))
-            act = tf.nn.relu(tf.layers.batch_normalization(fc1))
+            # fc1 = tf.layers.dropout(fc1,self.dropout_p,training=self.is_training)
+            act = tf.nn.sigmoid(tf.layers.batch_normalization(fc1))
+            # act = tf.nn.relu(tf.layers.batch_normalization(fc1))
             self.ew = ew
             self.eb = eb
             self.summ_handle.add_summ(e_w=sew, e_b=seb)
@@ -100,8 +101,9 @@ class MLPrec(object):
             self.db = db
             self.summ_handle.add_summ(d_w=sdw, d_b=sdb)
             fc = tf.add(tf.matmul(input, dw), db)
-            # out = tf.sigmoid(tf.layers.batch_normalization(fc))
-            out = tf.nn.relu(tf.layers.batch_normalization(fc))
+            # fc = tf.layers.dropout(fc, self.dropout_p, training=self.is_training)
+            out = tf.sigmoid(tf.layers.batch_normalization(fc))
+            # out = tf.nn.relu(tf.layers.batch_normalization(fc))
 
         return out,fc
 
@@ -137,15 +139,15 @@ class MLPrec(object):
             self.U_dec_layers.append(out)
             reg_losses = tf.losses.get_regularization_losses(layer_name)
             input_data = tf.concat([out,self.u_x],axis=1)
-        self.U_rec = fc
+        self.U_rec = out
         for loss in reg_losses:
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
-        reg_losses_u = tf.get_collection(loss_name)
+        self.reg_losses_u = tf.get_collection(loss_name)
         self.rec_loss_u = mse_by_part(self.U_rec, self.u_x,self.Rshape[1],self.alpha)
         tf.add_to_collection(loss_name,self.rec_loss_u)
         self.u_loss = tf.add_n(tf.get_collection(loss_name))  # U网络重建误差
-        self.reg_losses = list(reg_losses_u)
+        self.reg_losses = list(self.reg_losses_u)
         # ---------------------------------------------------------------------------------
         # --------------- 商品网络 ---------------------------------------------------------
         input_size = self.Rshape[0] + self.Isize
@@ -176,12 +178,12 @@ class MLPrec(object):
             self.I_dec_layers.append(out)
             reg_losses = tf.losses.get_regularization_losses(layer_name)
             input_data = tf.concat([out, self.i_x], axis=1)
-        self.I_rec = fc
+        self.I_rec = out
         for loss in reg_losses:
             tf.add_to_collection(loss_name, loss)
         # ----- loss -----
-        reg_losses_i = tf.get_collection(loss_name)
-        self.reg_losses.extend(reg_losses_i)
+        self.reg_losses_i = tf.get_collection(loss_name)
+        self.reg_losses.extend(self.reg_losses_i)
         self.rec_loss_i = mse_by_part(self.I_rec, self.i_x, self.Rshape[0], self.alpha)
         tf.add_to_collection(loss_name, self.rec_loss_i)
         self.i_loss = tf.add_n(tf.get_collection(loss_name))  # I网络重建误差
@@ -189,7 +191,7 @@ class MLPrec(object):
         # ------------------------- 总loss ------------------------------------------------
         self.sparse_loss = self.sparse_lambda * (sparse_loss(self.rho, self.V)+sparse_loss(self.rho, self.U))
         tf.add_to_collection(loss_name, self.sparse_loss)
-        self.R_hat = tf.matmul(self.U, tf.transpose(self.V))
+        self.R_hat = tf.matmul(self.U, tf.transpose(self.V))*5.0
         self.rec_loss = mse_mask(self.R,self.R_hat)
         reg_loss_u_and_i = tf.reduce_mean(tf.norm(self.U,axis=1))+tf.reduce_mean(tf.norm(self.V,axis=1))
         self.reg_losses.append(reg_loss_u_and_i)
@@ -202,9 +204,10 @@ class MLPrec(object):
 
     def train(self, val_iter, load_data_func):
         # val_iter是进行第几次交叉验证
-        tf.global_variables_initializer().run()
+
         self.writer = tf.summary.FileWriter('./'+self.log_dir, self.sess.graph)
-        self.optimizer = tf.train.AdamOptimizer(self.lr, beta1=0.9).minimize(self.loss)
+        # self.optimizer = tf.train.AdamOptimizer(self.lr, beta1=0.9).minimize(self.loss)
+        self.optimizer = tf.train.RMSPropOptimizer(self.lr).minimize(self.loss)
         tf.global_variables_initializer().run()
 
         counter = 0
@@ -237,7 +240,7 @@ class MLPrec(object):
                         self.writer.add_summary(summ_dw[i], epoch * n_batch + batch)
                         self.writer.add_summary(summ_eb[i], epoch * n_batch + batch)
                         self.writer.add_summary(summ_db[i], epoch * n_batch + batch)
-            print("epoch ",epoch," train loss: ", loss,"rmse: ",rmse," rec loss: ", rec_loss," reg loss: ",reg_loss,
+            print("epoch ",epoch," train loss: ", loss,"rmse: ",rmse," rec loss: ", rec_loss," reg loss: ",reg_loss[-1],
                   " loss u: ",loss_u," loss i: ",loss_i,
                   " sparse coef: ",tf.reduce_mean(tf.reduce_mean(U)).eval()+tf.reduce_mean(tf.reduce_mean(V)).eval(),
                  " time:",str(time.time()-begin_time))
@@ -252,7 +255,7 @@ class MLPrec(object):
                               feed_dict={self.u_x: batch_u, self.i_x: batch_i, self.R: batch_R, self.lr: current_lr})
             mean_rmse += rmse
         mean_rmse /= n_batch
-        print(" train loss: ", loss, "rmse: ", mean_rmse)
+        print(" val loss: ", loss, "rmse: ", mean_rmse)
         return rmse
 
 
