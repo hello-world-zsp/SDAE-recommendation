@@ -9,12 +9,13 @@ SDAE-recommendation system
 # MLPrec网络结构：
 - 电影评分数据集，ml-100k
 - Users Net
-    - 3层编码层，得到U，再接3层解码层，得到重建值。共6层。
+    - 3层编码层，__得到U__，再接3层解码层，得到重建值。共6层。
     - 每层输入：上一层的特征+用户特征（side information,年龄、职业），+ 表示拼接。
         - 对第一层，“上一层特征”指该用户对各商品的评分。 
     - 每层都是全连接层。wx+b -> batchnormalization -> sigmoid ->输出。
+    - __这样sigmoid的输出是0-1的，在算R_hat和R的偏差的时候，直接给R_hat乘了5.现在想想好像不科学,应该归一化R？或者decoder最后一层输出不加sigmoid?。。__
     - L2正则化，对各层w和b。
-- Items Net和UsersNet结构完全一样，得到V
+- Items Net和UsersNet结构完全一样，__得到V__
     - 商品特征是电影流派
 - 用户年龄特征rescale到0-1，用户职业和电影流派是one-hot编码。__这里和文献描述不同，文献是编码到1822维的二进制向量，不明白为什么以及怎么编的。__
 - 总loss: mse(R-UV), UsersNet重建误差，ItemsNet重建误差，正则项，||U||,||V||的加权和
