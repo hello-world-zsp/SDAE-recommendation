@@ -35,35 +35,32 @@ def read_and_decode_tfrecords(tfrecords_filename, nu=None,ni=None):
         data_rec2_tf = tf.reshape(data_rec2_tf,[nu,ni])
     return data_rec2_tf
 
-def data_generator_tfrecords(Rfilename,path,nu,nb,nb_batch,batch_size=None,shuffle = True):
-    U = read_and_decode_tfrecords("./" + path + 'User.tfrecords',nu,1)
-    I = read_and_decode_tfrecords("./" + path + 'item.tfrecords',nb,1)
-    R = read_and_decode_tfrecords(Rfilename,nu,nb)
-    # --------------------- 改到这里了！！！！---------------------------------------
-    if shuffle:
-        ru = np.random.permutation(nu).astype(np.int32)     # 只在第一次读的时候做shuffle
-        U = U[ru,:]
-        ri = np.random.permutation(nb)
-        I = I[ri,:]
-    else:
-        ru = range(U.shape[0])
-        ri = range(I.shape[0])
+def data_generator_tfrecords(Rfilename,path,Rshape,Usize,Isize,nb_batch,batch_size=None,shuffle = True):
+    U = read_and_decode_tfrecords("./" + path + 'User.tfrecords',Rshape[0],Usize)
+    I = read_and_decode_tfrecords("./" + path + 'Item.tfrecords',Rshape[1],Isize)
+    R = read_and_decode_tfrecords(Rfilename,Rshape[0],Rshape[1])
 
-    if batch_size is None:
-        R = R[ru,:]
-        R = R[:,ri]
-        batch_U = np.concatenate((R, U), axis=1)
-        batch_I = np.concatenate((R.T, I), axis=1)                                  # 转置
-        yield batch_U, batch_I, R
+    if shuffle:
+        ru = np.random.permutation(Rshape[0]).astype(np.int32)
+        ri = np.random.permutation(Rshape[1]).astype(np.int32)
+        U = tf.gather(U,ru)
+        I = tf.gather(I,ri)
     else:
-        batch = 0
-        while batch <= nb_batch:
-            batch_U = U[batch*batch_size:(batch+1)*batch_size]
-            batch_I = I[batch*batch_size:(batch+1)*batch_size]
-            batch_R_u = R[ru,:][batch*batch_size:(batch+1)*batch_size]            # 所选用户对应的评分项
-            batch_R_i = R[:,ri][:,batch*batch_size:(batch+1)*batch_size]
-            batch_R = batch_R_u[:,ri][:,batch*batch_size:(batch+1)*batch_size]
-            batch_U = np.concatenate((batch_R_u,batch_U),axis=1)
-            batch_I = np.concatenate((batch_R_i.T,batch_I),axis=1)                  # 转置
-            batch += 1
-            yield batch_U,batch_I,batch_R
+        ru = range(Rshape[0])
+        ri = range(Rshape[1])
+
+    Ru = tf.gather(R, ru)
+    Ri = tf.gather(tf.transpose(R), ri)
+    batch = 0
+    while batch <= nb_batch:
+        batch_U = tf.train.batch([U[:]], batch_size=batch_size, enqueue_many=True)
+        batch_I = tf.train.batch([I[:]], batch_size=batch_size, enqueue_many=True)
+        batch_R_u = tf.train.batch([Ru[:]], batch_size=batch_size, enqueue_many=True)  # 所选用户对应的评分项
+        batch_R_i = tf.train.batch([Ri[:]], batch_size=batch_size, enqueue_many=True)
+        batch_R = tf.gather(tf.transpose(batch_R_u),ri)
+        batch_R = tf.train.batch([batch_R[:]], batch_size=batch_size, enqueue_many=True)
+        batch_R = tf.cast(tf.transpose(batch_R),dtype=tf.float32)
+        batch_U = tf.cast(tf.concat((batch_R_u, batch_U), axis=1),dtype=tf.float32)
+        batch_I = tf.cast(tf.concat((batch_R_i, batch_I), axis=1),dtype=tf.float32)  # 转置
+        batch += 1
+        yield batch_U, batch_I, batch_R

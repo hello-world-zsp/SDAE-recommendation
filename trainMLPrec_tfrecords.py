@@ -5,7 +5,8 @@ import ast
 import tensorflow as tf
 import time
 
-from MLPrec import *
+# from MLPrec import *
+from MLPrec_tfrecords import *
 from dataUtils import data_generator,getData
 from tfrecords_dataUtils import data_generator_tfrecords
 
@@ -48,20 +49,18 @@ def main():
     fileI = mlp_args["data_dir"] + 'Item.npy'
     R,U,I = getData(fileR,fileItem=fileI,fileUser=fileU)
     num_vals = 5        # 交叉验证5次
+    # ----------------------------------------------------
     val_rmse = 0
     begin = time.time()
-    # ----------------------------------------------------
-    # ----------------- 模型初始化 ------------------------
     for i in range(1, num_vals + 1):
         print ('test ',i)
         tf.reset_default_graph()
         with tf.Session() as sess:
             print("Initializing...")
             model = MLPrec(sess,R.shape,U.shape,I.shape,is_training = True,**mlp_args)
-            print("build model...")
-            model.build()
             print("training...")
-            val_rmse += model.train(i, load_data_func=data_generator)
+            val_rmse += model.train(i,load_data_func=data_generator_tfrecords)
+
     print (val_rmse/num_vals)
     print ('total time: ',time.time()-begin)
 

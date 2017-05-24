@@ -65,42 +65,48 @@ class MLPrec(object):
         with tf.variable_scope(name):
             # mask噪声
             corrupt = tf.layers.dropout(input,rate= noise,training=self.is_training)
-            # 加性高斯噪声
-            # corrupt = tf.add(input,noise * tf.random_uniform(input.shape))
-            ew = tf.get_variable('enc_weights', shape=[input_size, units],
+            try:
+                ew = tf.get_variable('enc_weights', shape=[input_size, units],
                                  initializer=tf.random_normal_initializer(mean=0.0,stddev=self.stddev),
                                  regularizer=self.regularizer(layerlambda))
-            sew = tf.summary.histogram(name + '/enc_weights', ew)
-
-            eb = tf.get_variable('enc_biases',shape=[1,units],
+                sew = tf.summary.histogram(name + '/enc_weights', ew)
+                eb = tf.get_variable('enc_biases',shape=[1,units],
                                 initializer=tf.constant_initializer(0.0),dtype=tf.float32,
                                 regularizer=self.regularizer(layerlambda))
-            seb = tf.summary.histogram(name+'/enc_biases',eb)
+                seb = tf.summary.histogram(name+'/enc_biases',eb)
+                self.ew = ew
+                self.eb = eb
+                self.summ_handle.add_summ(e_w=sew, e_b=seb)
+            except ValueError:
+                tf.get_variable_scope().reuse_variables()
+                ew = tf.get_variable('enc_weights')
+                eb = tf.get_variable('enc_biases')
             fc1 = tf.add(tf.matmul(corrupt, ew), eb)
             # fc1 = tf.layers.dropout(fc1,self.dropout_p,training=self.is_training)
             act = tf.nn.sigmoid(tf.layers.batch_normalization(fc1))
             # act = tf.nn.relu(tf.layers.batch_normalization(fc1))
-            self.ew = ew
-            self.eb = eb
-            self.summ_handle.add_summ(e_w=sew, e_b=seb)
-
         return act
 
     # ------------------------- 译码层 -------------------------------------
     def decoder(self, input, units, layerlambda, name="encoder"):
         input_size = input.shape[1]
         with tf.variable_scope(name):
-            dw = tf.get_variable('dec_weights', shape=[input_size, units],
-                                 initializer=tf.random_normal_initializer(mean=0.0,stddev=self.stddev),
-                                 regularizer=self.regularizer(layerlambda))
-            sdw = tf.summary.histogram(name + '/dec_weights', dw)
-            db = tf.get_variable('dec_biases', shape=[1, units],
-                                 initializer=tf.constant_initializer(0.0), dtype=tf.float32,
-                                 regularizer=self.regularizer(layerlambda))
-            sdb = tf.summary.histogram(name + '/dec_biases', db)
-            self.dw = dw
-            self.db = db
-            self.summ_handle.add_summ(d_w=sdw, d_b=sdb)
+            try:
+                dw = tf.get_variable('dec_weights', shape=[input_size, units],
+                                     initializer=tf.random_normal_initializer(mean=0.0,stddev=self.stddev),
+                                     regularizer=self.regularizer(layerlambda))
+                sdw = tf.summary.histogram(name + '/dec_weights', dw)
+                db = tf.get_variable('dec_biases', shape=[1, units],
+                                     initializer=tf.constant_initializer(0.0), dtype=tf.float32,
+                                     regularizer=self.regularizer(layerlambda))
+                sdb = tf.summary.histogram(name + '/dec_biases', db)
+                self.dw = dw
+                self.db = db
+                self.summ_handle.add_summ(d_w=sdw, d_b=sdb)
+            except ValueError:
+                tf.get_variable_scope().reuse_variables()
+                dw = tf.get_variable('dec_weights')
+                db = tf.get_variable('dec_biases')
             fc = tf.add(tf.matmul(input, dw), db)
             # fc = tf.layers.dropout(fc, self.dropout_p, training=self.is_training)
             out = tf.sigmoid(tf.layers.batch_normalization(fc))
@@ -108,13 +114,14 @@ class MLPrec(object):
 
         return out,fc
 
-    def build(self):
-        self.lr = tf.placeholder(tf.float32, name='learning_rate')
-        self.R = tf.placeholder(tf.float32,None,name="Rating_Matrix")
+    def calculate(self,R,u_x,i_x):
+        # self.lr = tf.placeholder(tf.float32, name='learning_rate')
+        self.R = R
+        self.u_x = u_x
+        self.i_x = i_x
         # --------------- 用户网络 ---------------------------------------------------------
         input_size = self.Rshape[1] + self.Usize
         loss_name = 'loss U'
-        self.u_x = tf.placeholder(tf.float32, [None, input_size], name="user_input")
         # ----- encoder -----
         self.U_enc_layers = []
         input_data = self.u_x
@@ -153,7 +160,7 @@ class MLPrec(object):
         # --------------- 商品网络 ---------------------------------------------------------
         input_size = self.Rshape[0] + self.Isize
         loss_name = 'loss I'
-        self.i_x = tf.placeholder(tf.float32, [None, input_size], name="item_input")
+
         # ----- encoder -----
         self.I_enc_layers = []
         input_data = self.i_x
@@ -206,46 +213,55 @@ class MLPrec(object):
 
     def train(self, val_iter, load_data_func):
         # val_iter是进行第几次交叉验证
+        self.lr = self.lr_init
+        n_batch = self.Rshape[0] // self.batch_size
+        Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_train.tfrecords'
+        data_generator = load_data_func(Rfilename, self.data_dir, self.Rshape, self.Usize, self.Isize,
+                                        n_batch, batch_size=self.batch_size, shuffle=True)
+        batch_u, batch_i, batch_R = data_generator.next()
+        self.calculate(batch_R, batch_u, batch_i)
 
         self.writer = tf.summary.FileWriter('./'+self.log_dir, self.sess.graph)
-        # self.optimizer = tf.train.AdamOptimizer(self.lr, beta1=0.9).minimize(self.loss)
-        self.optimizer = tf.train.RMSPropOptimizer(self.lr).minimize(self.loss)
+        self.optimizer = tf.train.RMSPropOptimizer(self.lr,name='optimizer').minimize(self.loss)
         tf.global_variables_initializer().run()
 
         counter = 0
         current_lr = self.lr_init
         begin_time = time.time()
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=self.sess,coord=coord)
         # --------------------------------- 训练 --------------------------------------------------
         for epoch in range(self.n_epoch):
             if epoch > self.change_lr_epoch:
                 current_lr = current_lr * self.lr_decay
-            if self.batch_size is  None:
-                n_batch = 1
-            else:
-                n_batch = self.Rshape[0]//self.batch_size
-            # Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_train.npy'
-            Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_train.tfrecords'
-            # data_generator = load_data_func(Rfilename, self.data_dir, n_batch, batch_size=self.batch_size, shuffle=True)
-            data_generator = load_data_func(Rfilename, self.data_dir, self.Rshape[0],self.Rshape[1],n_batch, batch_size=self.batch_size, shuffle=True)
-            # data_batch = tf.train.shuffle_batch([data_R[:]], batch_size=self.batch_size, capacity=10000, min_after_dequeue=1000)
-            threads = tf.train.start_queue_runners(sess=self.sess)
+            # R = load_data_func(Rfilename, self.Rshape[0],self.Rshape[1])
+            # U = load_data_func("./" + self.data_dir + 'User.tfrecords', self.Rshape[0], self.Usize)
+            # I = load_data_func("./" + self.data_dir + 'Item.tfrecords', self.Rshape[1], self.Isize)
+            # batch_u, batch_R = tf.train.shuffle_batch([U[:],R[:]], batch_size=self.batch_size, capacity=10000,
+            #                                           min_after_dequeue=1000,enqueue_many=True)
+            # batch_u = tf.concat([batch_R,batch_u],axis=1)
+            # batch_i= tf.train.batch([I[:]], batch_size=self.batch_size, capacity=10000,enqueue_many=True)
+            # batch_i = tf.concat([tf.transpose(R[:,:self.batch_size]), batch_i], axis=1)
+            # data_generator = load_data_func(Rfilename,self.data_dir,self.Rshape,self.Usize,self.Isize,
+            #                                 n_batch,batch_size=self.batch_size,shuffle = True)
+
             for batch in range(n_batch):
                 counter += 1
                 # 每个batch读一次数据 load_data_func是一个generator,使用next获得它返回的值
-                batch_u, batch_i, _ = data_generator.next()
-                batch_R = self.sess.run([data_batch])
+                # batch_u, batch_i, batch_R = data_generator.next()
+                # self.loss = self.calculate(batch_R,batch_u,batch_i)
                 _, loss, rmse, rec_loss, reg_loss,loss_u,loss_i, U, V, summ_loss,summ_rmse =\
                     self.sess.run([self.optimizer,self.loss,self.rmse, self.rec_loss,self.reg_losses,self.rec_loss_u,self.rec_loss_i,
                                 self.U, self.V, self.summ_handle.summ_loss,self.summ_handle.summ_metric],
-                                  feed_dict={self.u_x: batch_u,self.i_x:batch_i, self.R:batch_R,self.lr:current_lr})
+                                  )
+
                 self.writer.add_summary(summ_loss,epoch * n_batch + batch)
                 self.writer.add_summary(summ_rmse, epoch * n_batch + batch)
                 if counter%50==0:
                 # 记录w,b
                     summ_ew, summ_dw, summ_eb, summ_db = self.sess.run([self.summ_handle.summ_enc_w, self.summ_handle.summ_enc_b,
                                                                self.summ_handle.summ_dec_w, self.summ_handle.summ_dec_b],
-                                                              feed_dict={self.u_x: batch_u, self.i_x: batch_i,
-                                                                         self.R: batch_R, self.lr: current_lr})
+                                                             )
                     for i in range(self.n_layers):
                         self.writer.add_summary(summ_ew[i], epoch * n_batch + batch)
                         self.writer.add_summary(summ_dw[i], epoch * n_batch + batch)
@@ -255,16 +271,22 @@ class MLPrec(object):
                   " loss u: ",loss_u," loss i: ",loss_i,
                   " sparse coef: ",tf.reduce_mean(tf.reduce_mean(U)).eval()+tf.reduce_mean(tf.reduce_mean(V)).eval(),
                  " time:",str(time.time()-begin_time))
-
         # ----------------------------------- validation -----------------------------------------------
         mean_rmse = 0
+        Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_val.tfrecords'
+        data_generator = load_data_func(Rfilename, self.data_dir, self.Rshape, self.Usize, self.Isize,
+                                        n_batch, batch_size=self.batch_size, shuffle=True)
+        batch_u, batch_i, batch_R = data_generator.next()
+        self.calculate(batch_R, batch_u, batch_i)
+
+        threads2 = tf.train.start_queue_runners(sess=self.sess, coord=coord)
         for batch in range(n_batch):
-            Rfilename = "./" + self.data_dir + 'R' + str(val_iter) + '_val.npy'
-            batch_u, batch_i, batch_R = next(load_data_func(Rfilename, self.data_dir, n_batch, batch_size=self.batch_size))
-            loss, rmse = \
-                self.sess.run([self.loss, self.rmse],
-                              feed_dict={self.u_x: batch_u, self.i_x: batch_i, self.R: batch_R, self.lr: current_lr})
+            loss, rmse = self.sess.run([self.loss, self.rmse])
             mean_rmse += rmse
+
         mean_rmse /= n_batch
         print(" val loss: ", loss, "rmse: ", mean_rmse)
+        coord.request_stop()
+        coord.join(threads)
+        coord.join(threads2)
         return rmse
