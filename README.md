@@ -3,7 +3,7 @@ SDAE-recommendation system
 ---------------
 - 运行 trainMLPrec.py,模型部分主要在MLPrec.py里面。即trainMLPrec.py->MLPrec.py.
 - *tfrecords的是使用tfrecords文件读取数据的相应代码。整体速度比使用placeholder+feed ndarry格式数据的形式快15%。
-- SDAE的协同过滤只实现了一层。运行train.py，可以训练，训练完一层后面就会报错，因为高层没想好怎么处理，所以还没处理。trian.py->SDAE.py->DAE.py的结构。
+- SDAE的协同过滤只实现了一层。运行train.py，可以训练，训练完一层后面就会报错。trian.py->SDAE.py->DAE.py的结构。
 
 
 -----------------------
@@ -18,7 +18,7 @@ SDAE-recommendation system
     - L2正则化，对各层w和b。
 - Items Net和UsersNet结构完全一样，__得到V__
     - 商品特征是电影流派
-- 用户年龄特征maxabs_rescale到0-1，用户职业和电影流派是one-hot编码。__这里和文献描述不同，文献是编码到1822维的二进制向量，不明白为什么以及怎么编的。__
+- 用户年龄特征maxabs_rescale到0-1，用户职业和电影流派是one-hot编码。
 - 总loss: mse(R-UV), UsersNet重建误差，ItemsNet重建误差，正则项，||U||,||V||的加权和
     - mse是矩阵各元素误差平方的均值，只针对R有评分的项计算。（mask是sign(abs(x))取到的）
     - __||U||的定义文献没有明说，我是取得U各行（代表各用户）norm的均值。__
