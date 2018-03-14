@@ -1,5 +1,9 @@
 
-SDAE-recommendation system
+# SDAE-recommendation system
+
+-------------------------
+这是master branch, 另有个tfrecord的branch,里面有个'完整版'文件夹，是整理好的代码和说明。
+
 ---------------
 - 运行 trainMLPrec.py,模型部分主要在MLPrec.py里面。即trainMLPrec.py->MLPrec.py.
 - *tfrecords的是使用tfrecords文件读取数据的相应代码。整体速度比使用placeholder+feed ndarry格式数据的形式快15%。
